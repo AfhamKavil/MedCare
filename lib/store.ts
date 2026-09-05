@@ -4,6 +4,17 @@ import { create } from 'zustand';
 
 export type Priority = 'Urgent' | 'Priority' | 'Stable';
 export type ActorRole = 'Nurse' | 'Doctor' | 'Patient' | 'System';
+export type TriageUrgency = 'URGENT' | 'PRIORITY' | 'NON-URGENT' | 'ESCALATE';
+
+export interface TriageResult {
+  urgency: TriageUrgency;
+  reason_codes: string[];
+  recommended_action: string;
+  diagnosis: null;
+  triggered_by: 'HARD_RULE' | 'AI_COUNCIL';
+  timestamp: string;         // HH:MM from ts()
+  source: 'triage';          // discriminator so Nurse can identify these events
+}
 
 export interface Vitals {
   bp: string;       // "128/76"
@@ -34,6 +45,7 @@ export interface ClinicalPatient {
   weight: number;   // kg — for calculator pre-fill
   height: number;   // cm — for calculator pre-fill
   lastHandoverAt: string;       // ISO timestamp
+  lastTriageResult?: TriageResult; // set by Patient Triage page; read by Nurse Dashboard
 }
 
 export interface AuditEvent {
@@ -233,6 +245,8 @@ interface ClinicalStore {
   updatePriority: (patientId: string, priority: Priority, actorRole: ActorRole) => void;
   addPendingAction: (patientId: string, action: string) => void;
   removePendingAction: (patientId: string, index: number, actorRole: ActorRole) => void;
+  // Triage — called after POST /api/triage succeeds
+  recordTriageResult: (patientId: string, result: TriageResult) => void;
 }
 
 let _eventCounter = 0;
@@ -382,6 +396,49 @@ export const useClinicalStore = create<ClinicalStore>((set, get) => ({
       patients: state.patients.map((p) =>
         p.id === patientId ? { ...p, pendingActions: [...p.pendingActions, action] } : p
       ),
+    }));
+  },
+
+  recordTriageResult: (patientId, result) => {
+    const patient = get().patients.find((p) => p.id === patientId);
+    if (!patient) return;
+
+    // Map API urgency → store Priority (case-sensitive)
+    const priorityMap: Record<TriageUrgency, Priority> = {
+      URGENT: 'Urgent',
+      PRIORITY: 'Priority',
+      'NON-URGENT': 'Stable',
+      ESCALATE: 'Urgent',
+    };
+    const newPriority = priorityMap[result.urgency];
+
+    // Pending action text for Nurse dashboard
+    const urgencyEmoji = result.urgency === 'URGENT' || result.urgency === 'ESCALATE'
+      ? '🚨' : result.urgency === 'PRIORITY' ? '⚠️' : '📋';
+    const pendingText = `${urgencyEmoji} Review triage result for ${patient.name} — ${result.urgency} (submitted ${result.timestamp})`;
+
+    set((state) => ({
+      patients: state.patients.map((p) =>
+        p.id === patientId
+          ? {
+              ...p,
+              lastTriageResult: result,
+              priority: newPriority,
+              pendingActions: [pendingText, ...p.pendingActions],
+            }
+          : p
+      ),
+      auditLog: [
+        {
+          id: uid(),
+          patientId,
+          timestamp: result.timestamp,
+          actorRole: 'Patient',
+          action: 'Triage completed',
+          details: `${patient.name} — Assessment: ${result.urgency}. Codes: ${result.reason_codes.slice(0, 3).join(', ')}.`,
+        },
+        ...state.auditLog,
+      ],
     }));
   },
 

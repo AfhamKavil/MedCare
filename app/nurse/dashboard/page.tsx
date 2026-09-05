@@ -194,6 +194,45 @@ export default function NurseDashboard() {
             </span>
           </div>
 
+          {/* ── Triage result from Patient portal ── */}
+          {selected.lastTriageResult && (
+            <section className={`rounded-2xl p-5 border ${
+              selected.lastTriageResult.urgency === 'URGENT' || selected.lastTriageResult.urgency === 'ESCALATE'
+                ? 'bg-red-900/25 border-red-500/40'
+                : selected.lastTriageResult.urgency === 'PRIORITY'
+                ? 'bg-yellow-900/25 border-yellow-500/40'
+                : 'bg-green-900/15 border-green-500/30'
+            }`}>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                  🩺 Patient Self-Triage — {selected.lastTriageResult.timestamp}
+                </p>
+                <span className={`text-xs font-black uppercase px-3 py-1 rounded-full ${
+                  selected.lastTriageResult.urgency === 'URGENT' || selected.lastTriageResult.urgency === 'ESCALATE'
+                    ? 'bg-red-500 text-white'
+                    : selected.lastTriageResult.urgency === 'PRIORITY'
+                    ? 'bg-yellow-500 text-gray-900'
+                    : 'bg-green-600 text-white'
+                }`}>
+                  {selected.lastTriageResult.urgency}
+                </span>
+              </div>
+              <p className="text-sm text-gray-200 mb-3 leading-relaxed">{selected.lastTriageResult.recommended_action}</p>
+              {selected.lastTriageResult.reason_codes.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5">Evidence from patient report</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selected.lastTriageResult.reason_codes.map((code) => (
+                      <span key={code} className="text-xs bg-white/5 text-gray-400 px-2.5 py-1 rounded-full font-mono">
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* ── Changes since last handover ── */}
           {significantDeltas.length > 0 && (
             <section className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-5">
